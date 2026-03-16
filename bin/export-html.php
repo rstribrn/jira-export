@@ -185,6 +185,35 @@ function fetch_json($url)
     return $json;
 }
 
+/**
+ * Save current export progress
+ */
+function saveProgress($projectKey, $issueKey = null)
+{
+    global $export_dir, $start;
+    $progressFile = $export_dir . '.progress';
+    $progress = array(
+        'timestamp' => $start,
+        'project' => $projectKey,
+        'issue' => $issueKey
+    );
+    file_put_contents($progressFile, json_encode($progress));
+}
+
+/**
+ * Load previous export progress
+ */
+function loadProgress()
+{
+    global $export_dir;
+    $progressFile = $export_dir . '.progress';
+    if (!file_exists($progressFile)) {
+        return null;
+    }
+    $data = file_get_contents($progressFile);
+    return json_decode($data, true);
+}
+
 $lufile = $export_dir . 'last-update';
 $start = time();
 
@@ -198,6 +227,9 @@ $http->setAuth($jira_user, $jira_password, HTTP_Request2::AUTH_BASIC);
 
 $updatedProjects = array();
 $hasUpdated = false;
+$resumeFrom = null;
+$resumeIssue = null;
+
 if (file_exists($lufile)) {
     //fetch list of projects updated since last export
     $lutime = strtotime(file_get_contents($lufile));
@@ -224,10 +256,24 @@ if (file_exists($lufile)) {
         }
         ksort($updatedProjects);
         $hasUpdated = count($updatedProjects) > 0;
-        doLog(sprintf(" Found %d projects.\n", count($updatedProjects)));
+        doLog(sprintf(" Found %d updated projects\n", count($updatedProjects)));
         if (!$hasUpdated) {
             exit();
         }
+    }
+} else {
+    // If last-update doesn't exist, but progress file exists
+    $progress = loadProgress();
+    if ($progress !== null && (time() - $progress['timestamp']) < 86400) {
+        // Progress is not older than 24h - resume
+        doLog(sprintf("Resuming from previous interrupted run (project: %s)\n", 
+            $progress['project']));
+        $resumeFrom = $progress['project'];
+        $resumeIssue = isset($progress['issue']) ? $progress['issue'] : null;
+    } else if ($progress !== null) {
+        // Old progress file - delete
+        @unlink($export_dir . '.progress');
+        doLog("Old progress file deleted (older than 24h)\n");
     }
 }
 
@@ -238,13 +284,30 @@ foreach ($projects as $project) {
     if ($hasUpdated && !isset($updatedProjects[$project->key])) {
         continue;
     }
-    doLog(sprintf("%s - %s\n", $project->key, $project->name));
+    
+    // Skip projects before resume point
+    if ($resumeFrom !== null) {
+        if ($project->key !== $resumeFrom) {
+            doLog(sprintf("%s - %s (skipped - before resume point)\n", 
+                $project->key, $project->name));
+            continue;
+        }
+        // Found the project to resume from
+        doLog(sprintf("%s - %s (RESUMING)\n", $project->key, $project->name));
+        $resumeFrom = null; // Stop skipping next projects
+    } else {
+        doLog(sprintf("%s - %s\n", $project->key, $project->name));
+    }
+    
     if (count($allowedProjectKeys) > 0
         && array_search($project->key, $allowedProjectKeys) === false
     ) {
         doLog(" skip\n");
         continue;
     }
+    
+    saveProgress($project->key);
+    
     //fetch all issues
     $pi = new PagingJsonIterator(
         $http,
@@ -261,23 +324,40 @@ foreach ($projects as $project) {
     doLog(sprintf(" Fetched %d issues (user: %s)\n", count($issues), $jira_user));
     
     createIssueIndex(new ArrayIterator($issues), $project);
-    downloadIssues(new ArrayIterator($issues), $project);
+    downloadIssues(new ArrayIterator($issues), $project, $resumeIssue);
+    
+    // Reset resumeIssue after project is complete
+    $resumeIssue = null;
 }
 
 //so we only have to update next time instead of exporting everything again
+@unlink($export_dir . '.progress');
 file_put_contents($lufile, date('c', $start));
 
-function downloadIssues(Iterator $issues, $project)
+function downloadIssues(Iterator $issues, $project, $resumeFromIssue = null)
 {
     global $http, $jira_url, $export_dir;
 
     $totalProcessed = 0;
+    $skippingToResume = $resumeFromIssue !== null;
+    
     doLog(' Downloading: ');
     foreach ($issues as $issue) {
         $totalProcessed++;
         if (!isset($issue->key) || $issue->key == '') {
             doLog('x');
             continue;
+        }
+        
+        // Skip until we reach the interruption point
+        if ($skippingToResume) {
+            if ($issue->key === $resumeFromIssue) {
+                $skippingToResume = false;
+                doLog(sprintf("\n Resuming from issue %s\n ", $issue->key));
+            } else {
+                doLog('s'); // skipped
+                continue;
+            }
         }
 
         $file = $export_dir . $issue->key . '.html';
@@ -292,6 +372,8 @@ function downloadIssues(Iterator $issues, $project)
         }
 
         doLog('n');
+        saveProgress($project->key, $issue->key);
+        
         $hd = clone $http;
         $idres = $hd->setUrl(
             $jira_url . 'si/jira.issueviews:issue-html/'
