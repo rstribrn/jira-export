@@ -95,8 +95,10 @@ Uninstallation
 
 #. Run: docker-compose stop
 #. Run: docker-compose rm -f
+#. Run: docker rmi netresearch/jira-export:latest
 #. Run: docker rmi jira-export_build:latest
 #. Run: docker rmi nginx:alpine
+#. Run: docker rmi php:7.4-cli-alpine
 #. Run: docker rmi php:8-alpine
 
 =================
