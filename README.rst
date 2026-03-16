@@ -95,6 +95,9 @@ Uninstallation
 
 #. Run: docker-compose stop
 #. Run: docker-compose rm -f
+#. Run: docker rmi jira-export_build:latest
+#. Run: docker rmi nginx:alpine
+#. Run: docker rmi php:8-alpine
 
 =================
 About jira-export
