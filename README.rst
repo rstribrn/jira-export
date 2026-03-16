@@ -45,8 +45,8 @@ Setup with docker
 #. ``$ cp data/config.php.dist ./data/config.php``
 #. Adjust ``data/config.php``
 #. Adjust docker-compose.override.yml to your needs
-#. run docker-compose run build build
-#. run docker-compose up -d
+#. Run: docker-compose run build build
+#. Run: docker-compose up -d
 #. Setup cron to run the export every 15 minutes.
 
 
@@ -89,6 +89,12 @@ Similar tools
 
 __ https://github.com/janl/gigan
 
+=================
+Uninstallation
+=================
+
+#. Run: docker-compose stop
+#. Run: docker-compose rm -f
 
 =================
 About jira-export
