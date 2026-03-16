@@ -110,6 +110,15 @@ Uninstallation
 #. Run: docker rmi php:7.4-cli-alpine
 #. Run: docker rmi php:8-alpine
 
+Cleanup including unused containers/volumes:
+#. Run: docker ps --all
+#. Run: docker container prune
+#. Run: docker volume ls
+#. Run: docker volume prune
+
+Explicit volume cleanup:
+#. Run: docker volume rm jira-export_html
+
 =================
 About jira-export
 =================
