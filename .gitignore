@@ -4,6 +4,9 @@
 /data/
 !/data/config.php.dist
 /vendor/
-/html/
+/html*/
+html*.7z
+html*.zip
+html*.gz
 build.sh
 run.sh
