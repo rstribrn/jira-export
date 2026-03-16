@@ -4,3 +4,4 @@
 /data/
 !/data/config.php.dist
 /vendor/
+/html/
