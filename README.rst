@@ -42,7 +42,7 @@ Setup with docker
 =================
 
 #. Clone git repository
-#. ``$ cp data/config.php.dist /data/config.php``
+#. ``$ cp data/config.php.dist ./data/config.php``
 #. Adjust ``data/config.php``
 #. Adjust docker-compose.override.yml to your needs
 #. run docker-compose run build build
