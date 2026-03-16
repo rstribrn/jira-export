@@ -77,7 +77,7 @@ class PagingJsonIterator implements \Iterator
     protected $http;
     protected $url;
     protected $pageSize;
-    protected $totalCount;
+    public $totalCount;
 
     public $jsonVarTotal = 'total';
     public $jsonVarStartAt = 'startAt';
@@ -89,6 +89,10 @@ class PagingJsonIterator implements \Iterator
         $this->http = $http;
         $this->url = $url;
         $this->pageSize = $pageSize;
+        $this->position = 0;
+        $this->data = array();
+        $this->dataPos = 0;
+        $this->totalCount = 0;
     }
 
     public function rewind()
@@ -127,13 +131,12 @@ class PagingJsonIterator implements \Iterator
 
     protected function loadData()
     {
-        $obj = fetch_json(
-            str_replace(
-                array('{startAt}', '{pageSize}'),
-                array($this->position, $this->pageSize),
-                $this->url
-            )
+        $url = str_replace(
+            array('{startAt}', '{pageSize}'),
+            array($this->position, $this->pageSize),
+            $this->url
         );
+        $obj = fetch_json($url);
         $this->totalCount = $obj->{$this->jsonVarTotal};
         $this->data = $obj->{$this->jsonVarData};
         $this->dataPos = $this->position;
@@ -249,12 +252,16 @@ foreach ($projects as $project) {
         . '?startAt={startAt}'
         . '&maxResults={pageSize}'
         . '&fields=key,updated,summary,parent'
-        . '&jql=project%3D%22' . urlencode($project->key) . '%22',
+        . '&jql=' . urlencode('project="' . $project->key . '" ORDER BY key ASC'),
         500
     );
 
-    createIssueIndex($pi, $project);
-    downloadIssues($pi, $project);
+    $issues = iterator_to_array($pi, false);
+    
+    doLog(sprintf(" Fetched %d issues (user: %s)\n", count($issues), $jira_user));
+    
+    createIssueIndex(new ArrayIterator($issues), $project);
+    downloadIssues(new ArrayIterator($issues), $project);
 }
 
 //so we only have to update next time instead of exporting everything again
@@ -264,8 +271,10 @@ function downloadIssues(Iterator $issues, $project)
 {
     global $http, $jira_url, $export_dir;
 
-    doLog(' ');
+    $totalProcessed = 0;
+    doLog(' Downloading: ');
     foreach ($issues as $issue) {
+        $totalProcessed++;
         if (!isset($issue->key) || $issue->key == '') {
             doLog('x');
             continue;
@@ -295,7 +304,7 @@ function downloadIssues(Iterator $issues, $project)
             adjustIssueHtml($idres->getBody(), $project)
         );
     }
-    doLog("\n");
+    doLog(sprintf(" (total: %d)\n", $totalProcessed));
 }
 
 function createProjectIndex($projects)
@@ -387,16 +396,21 @@ function createIssueIndex(Iterator $issues, $project)
 
     $arIssues = array();
     $count = 0;
+    $parentCount = 0;
+    $childCount = 0;
+    
     foreach ($issues as $issue) {
         ++$count;
         if (isset($issue->fields->parent)) {
+            $childCount++;
             $arIssues[$issue->fields->parent->key]['children']
                 [$issue->key]['issue'] = $issue;
         } else {
+            $parentCount++;
             $arIssues[$issue->key]['issue'] = $issue;
         }
     }
-    doLog(sprintf(" %d issues\n", $count));
+    doLog(sprintf(" Indexed %d issues (parents: %d, children: %d)\n", $count, $parentCount, $childCount));
 
     $body .= renderIssuesList($arIssues);
     $body .= getLastUpdateHtml();
