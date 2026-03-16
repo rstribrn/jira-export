@@ -47,8 +47,18 @@ Setup with docker
 #. Adjust docker-compose.override.yml to your needs
 #. Run: docker-compose run build build
 #. Run: docker-compose up -d
+#. Alternatively with --network=host: docker-compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 #. Setup cron to run the export every 15 minutes.
 
+Note: Rename docker-compose.hostnet.yml to docker-compose.override.yml in order to use network=host for build/app containers
+
+=================
+Access exported files
+=================
+
+Files are placed in Docker volume "html", see:
+
+docker volume inspect jira-export_html
 
 ========================
 Additional configuration
@@ -93,8 +103,7 @@ __ https://github.com/janl/gigan
 Uninstallation
 =================
 
-#. Run: docker-compose stop
-#. Run: docker-compose rm -f
+#. Run: docker-compose down
 #. Run: docker rmi netresearch/jira-export:latest
 #. Run: docker rmi jira-export_build:latest
 #. Run: docker rmi nginx:alpine

@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  build:
+    network_mode: host
+  app:
+    volumes:
+      - ./html:/opt/jira-export/www
+    network_mode: host
