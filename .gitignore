@@ -5,3 +5,5 @@
 !/data/config.php.dist
 /vendor/
 /html/
+build.sh
+run.sh
