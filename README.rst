@@ -81,6 +81,30 @@ Use the ``-c`` command line option:
    $ ./bin/export-html.php -c data/config-another.customer.php
 
 
+===============
+Troubleshooting
+===============
+
+User sees fewer issues than expected
+=====================================
+If the export shows fewer issues than JIRA UI reports (e.g., 6183 instead of 15622),
+the configured user likely has **limited permissions**.
+
+JIRA REST API only returns issues the authenticated user can see. To verify:
+
+#. Open in browser: ``https://your-jira.com/rest/api/latest/search?jql=project%3D%22PROJECT%22&maxResults=0``
+#. Check the ``total`` field in JSON response
+#. Compare with what the script reports
+
+**Solution:**
+
+* Use an administrator account with full project access, or
+* Grant the configured user "Browse Projects" and "View Issues" permissions for all relevant projects
+
+Note: Different users may see different issue counts based on their JIRA permissions,
+security levels, and workflow restrictions.
+
+
 ============
 Dependencies
 ============
