@@ -226,6 +226,7 @@ $http->setConfig(
 $http->setAuth($jira_user, $jira_password, HTTP_Request2::AUTH_BASIC);
 
 $updatedProjects = array();
+$updatedIssues = array(); // Map of issue keys that were updated
 $hasUpdated = false;
 $resumeFrom = null;
 $resumeIssue = null;
@@ -233,8 +234,11 @@ $resumeIssue = null;
 if (file_exists($lufile)) {
     //fetch list of projects updated since last export
     $lutime = strtotime(file_get_contents($lufile));
-    doLog("Fetching projects updated since last export\n");
-    if (time() - $lutime <= 14 * 86400) {
+    $daysSinceLastUpdate = (time() - $lutime) / 86400;
+    
+    if (time() - $lutime <= 365 * 86400) {
+        doLog(sprintf("Fetching projects updated since last export (%.1f days ago)\n", 
+            $daysSinceLastUpdate));
         $pi = new PagingJsonIterator(
             $http,
             $jira_url . 'rest/api/latest/search'
@@ -252,14 +256,22 @@ if (file_exists($lufile)) {
                 || array_search($pkey, $allowedProjectKeys) !== false
             ) {
                 $updatedProjects[$pkey] = true;
+                $updatedIssues[$issue->key] = true; // Store specific issue key
             }
         }
         ksort($updatedProjects);
         $hasUpdated = count($updatedProjects) > 0;
-        doLog(sprintf(" Found %d updated projects\n", count($updatedProjects)));
+        doLog(sprintf(" Found %d updated projects with %d updated issues\n", 
+            count($updatedProjects), count($updatedIssues)));
         if (!$hasUpdated) {
             exit();
         }
+    } else {
+        // Last update is too old (>1 year) - do full export
+        doLog(sprintf("Last update is too old (%.1f days ago, limit is 365 days)\n", 
+            $daysSinceLastUpdate));
+        doLog("Deleting last-update file and performing FULL EXPORT\n");
+        @unlink($lufile);
     }
 } else {
     // If last-update doesn't exist, but progress file exists
@@ -324,7 +336,7 @@ foreach ($projects as $project) {
     doLog(sprintf(" Fetched %d issues (user: %s)\n", count($issues), $jira_user));
     
     createIssueIndex(new ArrayIterator($issues), $project);
-    downloadIssues(new ArrayIterator($issues), $project, $resumeIssue);
+    downloadIssues(new ArrayIterator($issues), $project, $resumeIssue, $updatedIssues);
     
     // Reset resumeIssue after project is complete
     $resumeIssue = null;
@@ -334,12 +346,13 @@ foreach ($projects as $project) {
 @unlink($export_dir . '.progress');
 file_put_contents($lufile, date('c', $start));
 
-function downloadIssues(Iterator $issues, $project, $resumeFromIssue = null)
+function downloadIssues(Iterator $issues, $project, $resumeFromIssue = null, $updatedIssues = array())
 {
     global $http, $jira_url, $export_dir;
 
     $totalProcessed = 0;
     $skippingToResume = $resumeFromIssue !== null;
+    $isUpdateMode = count($updatedIssues) > 0;
     
     doLog(' Downloading: ');
     foreach ($issues as $issue) {
@@ -362,12 +375,22 @@ function downloadIssues(Iterator $issues, $project, $resumeFromIssue = null)
 
         $file = $export_dir . $issue->key . '.html';
 
-        if (file_exists($file) && isset($issue->fields->updated)) {
-            $iDate = strtotime($issue->fields->updated);
-            $fDate = filemtime($file);
-            if ($iDate < $fDate) {
-                doLog('.');
+        // In update mode, only regenerate if this specific issue was updated
+        if ($isUpdateMode) {
+            if (!isset($updatedIssues[$issue->key])) {
+                doLog('.'); // Skip - not in updated list
                 continue;
+            }
+            // Issue is in updated list - regenerate it
+        } else {
+            // Normal mode - check timestamps
+            if (file_exists($file) && isset($issue->fields->updated)) {
+                $iDate = strtotime($issue->fields->updated);
+                $fDate = filemtime($file);
+                if ($iDate < $fDate) {
+                    doLog('.');
+                    continue;
+                }
             }
         }
 
